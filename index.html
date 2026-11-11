@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>SAP PM Dashboard (frontend demo)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/styles.css"></head><body>
+<div class="shell">
+
+<nav class="rail" aria-label="Modules">
+ <div class="logo" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M7 6v12M12 4v16M17 8v8"/></svg></div>
+ <button data-tab="rc" data-no="01." data-name="Reliability &amp; Cost" class="on" title="Reliability &amp; Cost" aria-label="Reliability and Cost">
+  <svg viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M5 15l4-4 3 3 6-7"/></svg></button>
+ <button data-tab="mc" data-no="02." data-name="Maintenance Calendar" title="Maintenance Calendar" aria-label="Maintenance Calendar">
+  <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></button>
+ <button data-tab="iv" data-no="03." data-name="Inventory Monitoring" title="Inventory Monitoring" aria-label="Inventory Monitoring">
+  <svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></button>
+</nav>
+
+<div class="main">
+ <header class="top">
+  <div class="tabs" id="app-tabs" role="group" aria-label="Open menus"></div>
+  <div class="meta"></div>
+ </header>
+ <div class="crumb">
+  <svg class="ci" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+  <span id="app-crumb">Transaction &#9656; 01. Reliability &amp; Cost</span>
+  <span class="src" id="app-src"></span>
+  <button class="refresh" id="app-refresh" title="Refresh data" aria-label="Refresh data"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/></svg></button>
+ </div>
+ <div id="app-warn" class="warn" hidden>Chart.js did not load, so charts are hidden. See README (offline setup).</div>
+
+ <!-- 01 Reliability & Cost -->
+ <section id="tab-rc" class="pane">
+  <aside class="filters">
+   <h2><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>Filters</h2>
+   <label>From <select id="rc-from"></select></label>
+   <label>To <select id="rc-to"></select></label>
+   <label>Site <select id="rc-site"></select></label>
+   <label>Section <select id="rc-sec"></select></label>
+   <button class="apply" data-apply><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>FILTER DATA</button>
+  </aside>
+  <div class="content">
+   <p class="note" id="rc-note"></p>
+   <div class="kpis" id="rc-kpis"></div>
+   <div class="grid2">
+    <div class="card"><div class="ch">Reliability trend <select id="rc-metric"><option value="ir">IR (%)</option><option value="mttr">MTTR (hours)</option><option value="mtbf">MTBF (hours)</option></select></div><div class="cv"><canvas id="rc-c1"></canvas></div></div>
+    <div class="card"><div class="ch">IR by section (selected period and site)</div><div class="cv"><canvas id="rc-c2"></canvas></div></div>
+   </div>
+   <div class="card"><div class="ch">Breakdown by section</div><div id="rc-table" class="scroll"></div></div>
+   <div class="card"><div class="ch">Metric definitions (KALKULASI slide)</div><ul class="defs"><li>Loading Time = working hours - planned stop. Breakdown Time = sum of trouble time of machine-stop troubles. Both come from the Call System KPI sheet, in minutes.</li><li>IR (%) = Breakdown Time / Loading Time x 100.</li><li>MTTR (h) = Breakdown Time / Breakdown Frequency.</li><li>MTBF (h) = Loading Time / Breakdown Frequency.</li><li>For a period, the times and frequencies are added first, then divided. Change vs previous: the equal-length period just before; IR in percentage points.</li><li>Maintenance cost: the Call System 2026 file has no cost field, so it shows Unavailable.</li></ul></div>
+  </div>
+ </section>
+
+ <!-- 02 Maintenance Calendar -->
+ <section id="tab-mc" class="pane" hidden>
+  <aside class="filters">
+   <h2><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>Filters</h2>
+   <button class="plain" id="mc-prev">Previous month</button>
+   <button class="plain" id="mc-cur">First data month</button>
+   <button class="plain" id="mc-next">Next month</button>
+   <p class="lg-title">Order type</p>
+   <div class="legend" id="mc-legend"></div>
+  </aside>
+  <div class="content">
+   <p class="month" id="mc-title"></p>
+   <div class="kpis" id="mc-kpis"></div>
+   <div class="grid2">
+    <div class="card"><div class="ch">Planned start date</div><div id="mc-grid"></div></div>
+    <div class="card"><div class="ch" id="mc-dtitle">Select a date</div><div id="mc-detail" class="scroll"></div></div>
+   </div>
+   <div class="card"><div class="ch">Orders by planned start month and type</div><div class="cv"><canvas id="mc-c1"></canvas></div></div>
+   <div class="card"><div class="ch" id="mc-ttitle">Maintenance orders</div><div id="mc-table" class="scroll"></div></div>
+  </div>
+ </section>
+
+ <!-- 03 Inventory Monitoring -->
+ <section id="tab-iv" class="pane" hidden>
+  <aside class="filters">
+   <h2><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>Filters</h2>
+   <label>Search <input id="iv-search" placeholder="Material or description"></label>
+   <label>Plant <select id="iv-plant"></select></label>
+   <label>Status <select id="iv-status"></select></label>
+   <label>Category <select id="iv-cat"></select></label>
+   <button class="apply" data-apply><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>FILTER DATA</button>
+  </aside>
+  <div class="content">
+   <p class="note" id="iv-count"></p>
+   <div class="kpis" id="iv-kpis"></div>
+   <div class="card"><div id="iv-table" class="scroll tall"></div></div>
+   <p class="note">Gap = Actual Stock - Minimum Stock, calculated here. Category: Slow Moving = Minimum and Maximum Stock both 0 or empty (not maintained in SAP); Fast Moving = Minimum and/or Maximum Stock is set. Status (Out of Stock, Below Minimum, Normal, Above Maximum) is separate from Category; Actual Stock 0 is always Out of Stock. Data source: tab Min_Max_Stok of the Google Sheet (no unit column in the source); if the sheet cannot be read, the copy in js/data.js is shown. Unavailable = value not provided.</p>
+  </div>
+ </section>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+<script src="js/data.js"></script><script src="js/calc.js"></script><script src="js/sheets.js"></script><script src="js/ui.js"></script></body></html>
