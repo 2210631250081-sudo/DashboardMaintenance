@@ -35,23 +35,25 @@ C.prev = function (f) {
 function uniq(v, i, a) { return a.indexOf(v) === i; }
 C.orderMonths = function () { return D.orders.map(function (o) { return o.plannedStart.slice(0, 7); }).filter(uniq).sort(); };
 C.orderTypes = function () { return D.orders.map(function (o) { return o.type; }).filter(uniq).sort(); };
-/* Orders whose planned start date falls in month ym. The source sheet has no status, end date or confirmation, so no completion rate is calculated. */
-C.monthOrders = function (ym) {
-  var o = D.orders.filter(function (x) { return x.plannedStart.slice(0, 7) == ym; }), by = {}, eq = {};
+/* Orders whose planned start date falls in month ym. Status (Complete / Overdue / Not Complete) comes from the sheet: done, overdue and attain (done / total) are null or 0 until the sheet has Status values (hasStatus false).
+   list (optional): the orders to look in, already narrowed by the Maintenance Calendar filters; without it all orders are used. */
+C.monthOrders = function (ym, list) {
+  var o = (list || D.orders).filter(function (x) { return x.plannedStart.slice(0, 7) == ym; }), by = {}, eq = {};
   C.orderTypes().forEach(function (t) { by[t] = 0; });
   o.forEach(function (x) { by[x.type]++; eq[x.equipmentNo] = 1; });
-  return { orders: o, total: o.length, byType: by, equipment: Object.keys(eq).length };
+  var done = o.filter(function (x) { return x.status === 'Complete'; }).length, od = o.filter(function (x) { return x.status === 'Overdue / Not Complete'; }).length, hs = o.some(function (x) { return x.status; });
+  return { orders: o, total: o.length, byType: by, equipment: Object.keys(eq).length, done: done, overdue: od, hasStatus: hs, attain: hs && o.length ? done / o.length : null };
 };
 /* Inventory has two separate fields.
    Category (by Minimum / Maximum): Slow Moving = Minimum and Maximum are both not set (0 or empty; in SAP an unmaintained Min/Max reads as 0). Fast Moving = Minimum and/or Maximum is set.
    Status, first match wins:
-   1 Out of Stock: Actual Stock is 0 (for every category).   2 Unclassified: Minimum not set but Maximum is.   3 Below Minimum (only when a Minimum is set).
-   4 Above Maximum (only when a Maximum is set).   5 Normal. A Slow Moving material has no Minimum or Maximum to cross, so with stock it is Normal.
+   1 Out of Stock: Actual Stock is 0 (for every category).   2 Below Minimum (only when a Minimum is set).
+   3 Above Maximum (only when a Maximum is set).   4 Normal. A Slow Moving material has no Minimum or Maximum to cross, so with stock it is Normal.
    Gap = Actual - Minimum, null (Unavailable) when no Minimum is set. min and max are returned as they came in; only the rules treat 0 as "not set". */
 C.inv = function (m) {
   var mn = m.min > 0 ? m.min : null, mx = m.max > 0 ? m.max : null,
     cat = mn == null && mx == null ? 'Slow Moving' : 'Fast Moving',
-    st = m.actual === 0 ? 'Out of Stock' : mn == null ? (mx == null ? 'Normal' : 'Unclassified') : m.actual < mn ? 'Below Minimum' :
+    st = m.actual === 0 ? 'Out of Stock' : (mn != null && m.actual < mn) ? 'Below Minimum' :
     (mx != null && m.actual > mx) ? 'Above Maximum' : 'Normal';
   return { plant: m.plant, material: m.material, description: m.description, unit: m.unit, min: m.min, max: m.max, actual: m.actual,
     gap: mn == null ? null : m.actual - mn, status: st, category: cat };

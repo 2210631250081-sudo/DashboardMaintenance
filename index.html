@@ -12,6 +12,10 @@
   <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></button>
  <button data-tab="iv" data-no="03." data-name="Inventory Monitoring" title="Inventory Monitoring" aria-label="Inventory Monitoring">
   <svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></button>
+ <button data-tab="rp" data-no="04." data-name="Request PR" title="Request PR" aria-label="Request PR">
+  <svg viewBox="0 0 24 24"><path d="M3 4h2.5l2 11h10.5l2-8H7"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="16.5" cy="19.5" r="1.3"/></svg></button>
+ <button data-tab="sm" data-no="05." data-name="Summary" title="Summary" aria-label="Summary">
+  <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></button>
 </nav>
 
 <div class="main">
@@ -53,20 +57,25 @@
  <section id="tab-mc" class="pane" hidden>
   <aside class="filters">
    <h2><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>Filters</h2>
-   <button class="plain" id="mc-prev">Previous month</button>
-   <button class="plain" id="mc-cur">First data month</button>
-   <button class="plain" id="mc-next">Next month</button>
-   <p class="lg-title">Order type</p>
-   <div class="legend" id="mc-legend"></div>
+   <label>Search <input id="mc-search" placeholder="Order, equipment or description"></label>
+   <label>Plant <select id="mc-plant"></select></label>
+   <label>Line <select id="mc-line"></select></label>
+   <label>Status <select id="mc-status"></select></label>
+   <button class="apply" data-apply><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>FILTER DATA</button>
   </aside>
   <div class="content">
    <p class="month" id="mc-title"></p>
    <div class="kpis" id="mc-kpis"></div>
-   <div class="grid2">
-    <div class="card"><div class="ch">Planned start date</div><div id="mc-grid"></div></div>
-    <div class="card"><div class="ch" id="mc-dtitle">Select a date</div><div id="mc-detail" class="scroll"></div></div>
-   </div>
-   <div class="card"><div class="ch">Orders by planned start month and type</div><div class="cv"><canvas id="mc-c1"></canvas></div></div>
+   <div class="card"><div class="ch">Planned start date</div>
+    <div class="cal-bar">
+     <button class="ib" id="mc-prev" title="Previous month" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+     <select id="mc-month" aria-label="Month"></select>
+     <select id="mc-year" aria-label="Year"></select>
+     <button class="ib" id="mc-next" title="Next month" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    </div>
+    <div id="mc-grid"></div></div>
+   <div class="card"><div class="ch" id="mc-dtitle">Select a date</div><div id="mc-detail" class="scroll"></div></div>
+   <div class="card"><div class="ch">Orders by planned start month</div><div class="cv"><canvas id="mc-c1"></canvas></div></div>
    <div class="card"><div class="ch" id="mc-ttitle">Maintenance orders</div><div id="mc-table" class="scroll"></div></div>
   </div>
  </section>
@@ -78,17 +87,68 @@
    <label>Search <input id="iv-search" placeholder="Material or description"></label>
    <label>Plant <select id="iv-plant"></select></label>
    <label>Status <select id="iv-status"></select></label>
-   <label>Category <select id="iv-cat"></select></label>
+   <label>Category <select id="iv-grp"></select></label>
+   <label>Line <select id="iv-line"></select></label>
+   <label>Machine <select id="iv-mc"></select></label>
    <button class="apply" data-apply><svg viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>FILTER DATA</button>
   </aside>
   <div class="content">
    <p class="note" id="iv-count"></p>
    <div class="kpis" id="iv-kpis"></div>
    <div class="card"><div id="iv-table" class="scroll tall"></div></div>
-   <p class="note">Gap = Actual Stock - Minimum Stock, calculated here. Category: Slow Moving = Minimum and Maximum Stock both 0 or empty (not maintained in SAP); Fast Moving = Minimum and/or Maximum Stock is set. Status (Out of Stock, Below Minimum, Normal, Above Maximum) is separate from Category; Actual Stock 0 is always Out of Stock. Data source: tab Min_Max_Stok of the Google Sheet (no unit column in the source); if the sheet cannot be read, the copy in js/data.js is shown. Unavailable = value not provided.</p>
+   <p class="note">Gap = Actual Stock - Minimum Stock. Total value on the cards = Actual Stock x Unit Price (dummy).</p>
+  </div>
+ </section>
+
+ <!-- 05 Summary -->
+ <section id="tab-sm" class="pane" hidden><div class="content" id="sm-root"></div></section>
+
+ <!-- 04 Request PR -->
+ <section id="tab-rp" class="pane" hidden>
+  <div class="content">
+   <div class="rp-user"><label for="rp-user">User login (demo)</label><select id="rp-user"></select></div>
+   <div class="rp-box">
+    <button type="button" class="rp-head" id="rp-toggle" aria-expanded="true" aria-controls="rp-body"><span>KLIK DISINI UNTUK REQUEST PEMBELIAN BARANG KE ADMIN</span><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+    <div class="rp-body" id="rp-body">
+     <div class="rp-form">
+      <div class="rp-left">
+       <div class="rp-f"><label for="rp-plant">Plant</label><select id="rp-plant"></select></div>
+       <div class="rp-f"><label for="rp-material">Material</label>
+        <div class="rp-cb"><input id="rp-material" autocomplete="off" placeholder="Ketik kode material atau description" role="combobox" aria-expanded="false" aria-controls="rp-material-list"><ul class="rp-list" id="rp-material-list" role="listbox" hidden></ul></div>
+        <small class="rp-hint">Jika master tidak ada, maka pilih NON MASTER<br>Untuk Jasa, maka pilih SV</small></div>
+       <div class="rp-f" id="rp-desc-wrap" hidden><label for="rp-desc">Deskripsi material (NON MASTER / SV)</label><input id="rp-desc" autocomplete="off" placeholder="Tulis nama / description material"></div>
+       <div class="rp-row3">
+        <div class="rp-f"><label for="rp-machine">Nomor Mesin</label>
+         <div class="rp-cb"><input id="rp-machine" autocomplete="off" placeholder="Ketik nomor mesin" role="combobox" aria-expanded="false" aria-controls="rp-machine-list"><ul class="rp-list" id="rp-machine-list" role="listbox" hidden></ul></div></div>
+        <div class="rp-f"><label for="rp-mstatus">Status Mesin</label><select id="rp-mstatus"></select></div>
+        <div class="rp-f"><label for="rp-use">Pemakaian Untuk Tanggal</label><input id="rp-use" class="rp-date" data-clear="1" readonly placeholder="Pilih Tanggal"></div>
+       </div>
+       <div class="rp-row3">
+        <div class="rp-f"><label for="rp-unit">Satuan</label><select id="rp-unit"></select></div>
+        <div class="rp-f"><label for="rp-qty">Quantity</label><input id="rp-qty" inputmode="numeric" autocomplete="off" maxlength="9"></div>
+        <div class="rp-f"><label for="rp-status">Status</label><select id="rp-status"></select></div>
+       </div>
+       <button type="button" class="rp-add" id="rp-add">TAMBAH REQUEST BARU</button>
+       <p class="rp-msg" id="rp-msg" role="status"></p>
+      </div>
+      <div class="rp-right">
+       <div class="rp-stock"><div><span>Stok Cikarang</span><b id="rp-s-ckr">0</b></div><div><span>Stok Karawang</span><b id="rp-s-krw">0</b></div><div><span>Standar Stok</span><b id="rp-s-std">0</b></div></div>
+       <div class="rp-f"><label for="rp-note">KETERANGAN</label><textarea id="rp-note" rows="6"></textarea></div>
+      </div>
+     </div>
+    </div>
+   </div>
+   <p class="rp-info">Silakan pilih tanggal dibawah untuk mem-filter data yang di inginkan</p>
+   <div class="rp-dates">
+    <div class="rp-f"><label for="rp-from">Tanggal Dari</label><input id="rp-from" class="rp-date" data-clear="1" readonly placeholder="Pilih Tanggal"></div>
+    <div class="rp-f"><label for="rp-to">Tanggal Sampai</label><input id="rp-to" class="rp-date" data-clear="1" readonly placeholder="Pilih Tanggal"></div>
+   </div>
+   <div class="rp-btns"><button type="button" class="rp-b blue" id="rp-refresh">Refresh</button><button type="button" class="rp-b dark" id="rp-sap">Excel to SAP</button><button type="button" class="rp-b green" id="rp-export">Export Excel</button></div>
+   <p class="note" id="rp-count"></p>
+   <div class="rp-tw" id="rp-table"></div>
   </div>
  </section>
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
-<script src="js/data.js"></script><script src="js/calc.js"></script><script src="js/sheets.js"></script><script src="js/ui.js"></script></body></html>
+<script src="js/data.js"></script><script src="js/calc.js"></script><script src="js/dummy.js"></script><script src="js/sheets.js"></script><script src="js/ui.js"></script><script src="js/summary.js"></script><script src="js/request-pr.js"></script></body></html>

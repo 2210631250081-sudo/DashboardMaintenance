@@ -9,7 +9,9 @@ var CFG = {
   timeoutSeconds: 20,
   /* csvUrl empty = read the tab by name through a script tag (works from a folder, no extra step). Optional alternative: File > Share > Publish to web > pick the tab > CSV, and paste that link into csvUrl. */
   orders:    { sheet: 'Maintenance_Kalender', csvUrl: '' },
-  materials: { sheet: 'Min_Max_Stok',         csvUrl: '' }
+  materials: { sheet: 'Min_Max_Stok',         csvUrl: '' },
+  /* Menu 01 (Callsystem_Reliability) and menu 05 (Summary): several blocks side by side, columns by position (see README). */
+  extras: ['Callsystem_Reliability', 'Summary'].map(function (n) { return { sheet: n, csvUrl: '' }; })
 };
 
 /* ---------- Reading values ---------- */
@@ -57,9 +59,10 @@ function date(s) {
    Each field has the column title the dashboard expects (h), the column position used when the title row cannot be found (i, 0 = column A),
    and req = the title row must contain it. Titles are compared without capitals and extra spaces. */
 var ORD_FIELDS = [{ k: 'order', h: 'order', i: 1, req: 1 }, { k: 'equipmentNo', h: 'equipment_no', i: 2, req: 1 }, { k: 'type', h: 'type_order', i: 3, req: 1 },
-  { k: 'description', h: 'description', i: 4 }, { k: 'plannedStart', h: 'planned_start', i: 5, req: 1 }, { k: 'plant', h: 'plant', i: 6, req: 1 }];
+  { k: 'description', h: 'description', i: 4 }, { k: 'plannedStart', h: 'planned_start', i: 5, req: 1 }, { k: 'plant', h: 'plant', i: 6, req: 1 },
+  { k: 'finish', h: 'finish', i: 7 }, { k: 'range', h: 'range', i: 8 }, { k: 'status', h: 'status', i: 9 }, { k: 'machineName', h: 'machine_name', i: 10 }, { k: 'factory', h: 'factory', i: 11 }, { k: 'line', h: 'line', i: 12 }];
 var MAT_FIELDS = [{ k: 'plant', h: 'plant', i: 1, req: 1 }, { k: 'material', h: 'material', i: 2, req: 1 }, { k: 'description', h: 'description', i: 3 },
-  { k: 'min', h: 'minimum stock', i: 4, req: 1 }, { k: 'max', h: 'maximum stock', i: 5, req: 1 }, { k: 'actual', h: 'actual stock', i: 6, req: 1 }];
+  { k: 'min', h: 'minimum stock', i: 4, req: 1 }, { k: 'max', h: 'maximum stock', i: 5, req: 1 }, { k: 'actual', h: 'actual stock', i: 6, req: 1 }, { k: 'price', h: 'unit price', i: 8 }, { k: 'group', h: 'material group', i: 9 }, { k: 'machine', h: 'machine_no', i: 10 }, { k: 'line', h: 'line', i: 11 }];
 /* Looks for the title row in the first 10 rows. Found = columns by title, data starts below it. Not found = columns by position, data starts at row 1. */
 function layout(rows, fields) {
   var r, i, f, cols, ok, titles;
@@ -79,12 +82,20 @@ function isLabel(r) { var a = norm(r[0]); return a !== '' && a !== 'value'; }
 function isEmpty(r) { for (var i = 1; i < r.length; i++) if (String(r[i]).trim() !== '') return false; return true; }
 
 /* ---------- Rows -> records (same shapes as data.js) ---------- */
+/* Status text -> 'Complete' or 'Overdue / Not Complete' (capitals, extra spaces and "Completed" / "Not Completed" / "Overdue" are accepted). Empty or any other text -> null (not counted in the tiles). */
+function status(s) {
+  var t = norm(s).replace(/\s*\/\s*/g, ' / ');
+  if (t === 'complete' || t === 'completed') return 'Complete';
+  if (t === 'overdue' || t === 'not complete' || t === 'not completed' || t === 'overdue / not complete' || t === 'overdue / not completed') return 'Overdue / Not Complete';
+  return null;
+}
 function toOrders(rows) {
   var L = layout(rows, ORD_FIELDS), c = L.cols, out = [], skipped = 0, i, r, o, d;
   for (i = L.start; i < rows.length; i++) {
     r = rows[i]; if (isLabel(r) || isEmpty(r)) continue;
     d = date(cell(r, c.plannedStart));
-    o = { order: cell(r, c.order), equipmentNo: cell(r, c.equipmentNo), type: cell(r, c.type), plannedStart: d, plant: cell(r, c.plant), description: cell(r, c.description) || null };
+    o = { order: cell(r, c.order), equipmentNo: cell(r, c.equipmentNo), type: cell(r, c.type), plannedStart: d, plant: cell(r, c.plant), description: cell(r, c.description) || null,
+      finish: date(cell(r, c.finish)), range: cell(r, c.range) || null, status: status(cell(r, c.status)), machineName: cell(r, c.machineName) || null, factory: cell(r, c.factory) || null, line: cell(r, c.line) || null };
     if (!o.order || !o.equipmentNo || !o.type || !o.plant || !d) { skipped++; continue; }
     out.push(o);
   }
@@ -97,7 +108,7 @@ function toMaterials(rows) {
     p = cell(r, c.plant); mt = cell(r, c.material); mn = num(cell(r, c.min)); mx = num(cell(r, c.max)); ac = num(cell(r, c.actual));
     /* An empty Minimum or Maximum is allowed (null): calc.js treats empty and 0 as "not set". Actual Stock must be a number (0 is fine). */
     if (!p || !mt || mn === undefined || mx === undefined || ac == null) { skipped++; continue; }
-    out.push({ plant: p, material: mt, description: cell(r, c.description), min: mn, max: mx, actual: ac });
+    out.push({ plant: p, material: mt, description: cell(r, c.description), min: mn, max: mx, actual: ac, price: num(cell(r, c.price)) == null ? null : num(cell(r, c.price)), group: cell(r, c.group) || null, machine: cell(r, c.machine) || null, line: cell(r, c.line) || null });
   }
   return { rows: out, skipped: skipped, byTitle: L.byTitle };
 }
@@ -182,6 +193,39 @@ S.load = function (cb) {
       cb(null, { orders: o.rows, materials: m.rows, skipped: { orders: o.skipped, materials: m.skipped }, byTitle: { orders: o.byTitle, materials: m.byTitle }, changed: changed, at: new Date() });
     });
   });
+};
+/* loadExtra(callback): callback(error) or callback(null, changed). Reads tab Callsystem_Reliability (menu 01) and tab Summary (menu 05), fills DemoData.rel and window.Dummy.
+   Blocks sit side by side under the same 4 label rows; column A = "Value" marks the data rows; a block row without a value in its first column is skipped. Columns by position (A = 0):
+   Callsystem_Reliability: KPI 1-5 | Sections 7-9 | Machines 11-20 | Worst machines 22-29.   Summary: Targets 1-3 | Monthly stock value 5-6. */
+var lastX = '';
+function blk(rows, c0, n, fn) {
+  var i, r, v, j;
+  for (i = 0; i < rows.length; i++) { r = rows[i]; if (norm(r[0]) !== 'value') continue; v = []; for (j = 0; j < n; j++) v.push(cell(r, c0 + j)); if (v[0] !== '') fn(v); }
+}
+S.loadExtra = function (cb) {
+  var got = [], i = 0;
+  (function next() {
+    if (i >= CFG.extras.length) return apply();
+    get(CFG.extras[i], function (e, a) { if (e) return cb(e); got.push(a); i++; next(); });
+  })();
+  function apply() {
+    var X = window.Dummy, D = window.DemoData, R = got[0].rows, Sm = got[1].rows, mo = [], kp = [], sec = [], mc = {}, pf = {}, wo = [], tg = {}, tm = [], tv = [], sig = got[0].sig + '|' + got[1].sig;
+    blk(R, 1, 5, function (v) { var m = v[0].slice(0, 7), a = num(v[2]), b = num(v[3]), f = num(v[4]); if (a == null || b == null || f == null) return; if (mo.indexOf(m) < 0) mo.push(m); kp.push({ month: m, section: v[1], load: a, trouble: b, freq: f }); });
+    blk(R, 7, 3, function (v) { sec.push({ id: v[0], group: v[1], site: v[2] }); });
+    blk(R, 11, 10, function (v) { var n = v.slice(5).map(num); mc[v[0]] = [v[1], v[2], v[3], v[4]]; if (n.every(function (x) { return x != null; })) pf[v[0]] = n; });
+    blk(R, 22, 8, function (v) { var d = num(v[4]), f = num(v[5]); if (d != null && f != null) wo.push({ prod: v[0], section: v[1], line: v[2], mc: v[3], down: d, freq: f, type: v[6], maker: v[7] }); });
+    blk(Sm, 1, 3, function (v) { tg[norm(v[0])] = num(v[1]); });
+    blk(Sm, 5, 2, function (v) { var n = num(v[1]); if (n != null) { tm.push(v[0]); tv.push(n); } });
+    if (!kp.length || !Object.keys(mc).length) return cb(new Error('tab Callsystem_Reliability has no valid rows in the expected columns (KPI from column B, machines from column L, see README)'));
+    D.rel = { months: mo.sort(), sections: sec.length ? sec : D.rel.sections, rows: kp };
+    Object.keys(pf).forEach(function (m) { if (!mc[m]) delete pf[m]; });
+    X.mc = mc; if (Object.keys(pf).length) X.perf = pf; if (wo.length) X.worst = wo;
+    if (tm.length) { X.tm = tm; X.tv = tv; }
+    function pick(a, b) { return a == null ? b : a; }
+    X.tg = { ir: pick(tg.ir_target, X.tg.ir), mttr: pick(tg.mttr_target, X.tg.mttr), mtbf: pick(tg.mtbf_target, X.tg.mtbf), costPlan: pick(tg.cost_plan_factor, X.tg.costPlan), turn: [pick(tg.turnover, X.tg.turn[0]), pick(tg.turnover_target, X.tg.turn[1])], acc: pick(tg.accuracy, X.tg.acc) };
+    X.lines = Object.keys(X.perf).map(function (m) { return mc[m][2]; }).filter(function (v, j, a) { return a.indexOf(v) === j; }).sort();
+    var chg = sig !== lastX; lastX = sig; cb(null, chg);
+  }
 };
 window.SheetData = S;
 })();

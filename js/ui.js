@@ -2,8 +2,11 @@
 (function () {
 var D = window.DemoData, C = window.Calc, ch = {}, sorts = {}, shown = {}, ivSig = '', cal = { ym: C.orderMonths()[0], sel: null };
 var OT = { ZPM1: '#c1272d', ZPM2: '#484848' };
+var MC = '#c1272d';   /* Maintenance Calendar: one colour, all orders are preventive maintenance */
+var OS = { Complete: '#2e7d32', 'Overdue / Not Complete': '#c1272d' };
+var PN = { '6410': 'Cikarang', '6420': 'Karawang' };   /* plant code -> name (Maintenance Calendar and Inventory Monitoring) */
 function otc(t) { return OT[t] || '#9e9e9e'; }
-var IS = { 'Out of Stock': '#c1272d', 'Below Minimum': '#d9822b', Normal: '#2e7d32', 'Above Maximum': '#484848', Unclassified: '#9e9e9e' };
+var IS = { 'Out of Stock': '#c1272d', 'Below Minimum': '#d9822b', Normal: '#2e7d32', 'Above Maximum': '#484848' };
 var IC = { 'Fast Moving': '#00838f', 'Slow Moving': '#2b6cb0' };
 var MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 function $(i) { return document.getElementById(i); }
@@ -11,7 +14,7 @@ function nf(n, d) { return n == null ? 'Unavailable' : n.toLocaleString('id-ID',
 function rp(n) { return 'Rp ' + nf(n); }
 function fd(s) { return s ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : '-'; }
 function mix(f, o) { return { from: o.from, to: o.to, site: f.site, section: f.section }; }
-function pill(s) { return '<span class="pill" style="background:' + (IS[s] || IC[s] || otc(s)) + '">' + s + '</span>'; }
+function pill(s) { return '<span class="pill" style="background:' + (IS[s] || IC[s] || OS[s] || otc(s)) + '">' + s + '</span>'; }
 function opts(el, list, all) { el.innerHTML = (all ? '<option value="">' + all + '</option>' : '') + list.map(function (o) { return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join(''); }
 function card(l, v, d, n) { return '<div class="kpi"><div class="kl">' + l + '</div><div class="kv">' + v + '</div><div class="kd ' + (d ? d.c : '') + '">' + (d ? d.t : '') + '</div><div class="kn">' + (n || '') + '</div></div>'; }
 function dl(cur, prev, low, pp) {
@@ -66,55 +69,87 @@ function rcRender() {
 }
 function rcSec() { opts($('rc-sec'), D.rel.sections.filter(function (s) { return !$('rc-site').value || s.site == $('rc-site').value; }).map(function (s) { return [s.id, s.group == s.id ? s.id : s.id + ' (' + s.group + ')']; }), 'All sections'); }
 /* ---------- Maintenance Calendar ---------- */
-var OC = [{ k: 'order', l: 'Maintenance Order' }, { k: 'equipmentNo', l: 'Equipment No.' }, { k: 'type', l: 'Type', f: function (r) { return pill(r.type); } },
+var OC = [{ k: 'plant', l: 'Plant', f: function (r) { return PN[r.plant] || r.plant; } }, { k: 'order', l: 'Order' },
+  { k: 'equipmentNo', l: 'No. Mesin', f: function (r) { return String(r.equipmentNo).slice(-5); } },   /* machine number = last 5 characters of Equipment_No */
   { k: 'description', l: 'Description', f: function (r) { return r.description ? esc(r.description) : '-'; } },
-  { k: 'plannedStart', l: 'Planned Start', f: function (r) { return fd(r.plannedStart); } }, { k: 'plant', l: 'Plant' }];
+  { k: 'range', l: 'Range', f: function (r) { return r.range ? esc(r.range) : '-'; } },
+  { k: 'plannedStart', l: 'Planned Start', f: function (r) { return fd(r.plannedStart); } }, { k: 'finish', l: 'Finish', f: function (r) { return fd(r.finish); } },
+  { k: 'status', l: 'Status', f: function (r) { return r.status ? pill(r.status) : '-'; } }];
+/* Maintenance Calendar filters (same controls as Inventory Monitoring). Category = order type. Status = Complete or Overdue / Not Complete (column Status of the sheet). */
+function mcRows() {
+  var pl = $('mc-plant').value, st = $('mc-status').value, q = $('mc-search').value.toLowerCase(), ln = $('mc-line').value;
+  return D.orders.filter(function (o) { return (!pl || o.plant == pl) && (!ln || (o.line || (Dummy.mc[String(o.equipmentNo).slice(-5)] || [])[2]) == ln) && (!st || o.status == st) && (!q || (o.order + ' ' + o.equipmentNo + ' ' + (o.description || '')).toLowerCase().indexOf(q) >= 0); });
+}
+var TI = {
+  cal: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg>',
+  ok: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg>',
+  warn: '<svg viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4.5M12 17.2v.01"/></svg>',
+  ring: function (p) { return '<svg viewBox="0 0 36 36" style="transform:rotate(-90deg)"><circle class="trk" cx="18" cy="18" r="14"/>' + (p == null ? '' : '<circle cx="18" cy="18" r="14" stroke-dasharray="' + (Math.max(0, Math.min(1, p)) * 87.96).toFixed(2) + ' 87.96"/>') + '</svg>'; }
+};
+/* One colored tile. val null = Unavailable (the source sheet does not provide it); unit then says why. */
+function tile(cls, icon, label, val, unit) {
+  return '<div class="tile ' + cls + '"><div class="ti">' + icon + '</div><div class="tb"><div class="tl">' + label + '</div><div class="tv' + (val == null ? ' na' : '') + '">' + (val == null ? 'Unavailable' : val) + '</div><div class="tu">' + unit + '</div></div></div>';
+}
+/* Month and Year dropdowns follow the calendar (cal.ym). Fiscal year = April to March, named by the year it ends (2026FY = April 2025 to March 2026).
+   The list holds the fiscal years found in the data plus the one being shown; months are listed April to March. */
+var FM = ['04', '05', '06', '07', '08', '09', '10', '11', '12', '01', '02', '03'];
+function fyOf(ym) { var y = +ym.slice(0, 4); return +ym.slice(5) >= 4 ? y + 1 : y; }
+function yearOpts() {
+  var ys = C.orderMonths().map(function (m) { return fyOf(m); }).concat(fyOf(cal.ym)).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
+  opts($('mc-year'), ys.map(function (v) { return [String(v), v + 'FY']; }));
+}
+function syncYM() {
+  var f = String(fyOf(cal.ym));
+  if (!Array.prototype.some.call($('mc-year').options, function (o) { return o.value === f; })) yearOpts();
+  $('mc-year').value = f; $('mc-month').value = cal.ym.slice(5);
+}
 function mcRender() {
-  var ym = cal.ym, y = +ym.slice(0, 4), m = +ym.slice(5) - 1, off = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7, dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(), by = {}, types = C.orderTypes(), h, d, i, key, cnt;
-  D.orders.forEach(function (o) { (by[o.plannedStart] = by[o.plannedStart] || []).push(o); });
-  $('mc-title').textContent = MN[m] + ' ' + y;
+  var fl = mcRows(), ym = cal.ym, y = +ym.slice(0, 4), m = +ym.slice(5) - 1, off = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7, dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(), by = {}, h, d, i, key, cnt;
+  fl.forEach(function (o) { (by[o.plannedStart] = by[o.plannedStart] || []).push(o); });
+  $('mc-title').textContent = MN[m] + ' ' + y; syncYM();
   h = '<table class="cal"><tr>' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(function (x) { return '<th>' + x + '</th>'; }).join('') + '</tr><tr>';
   for (i = 0; i < off; i++) h += '<td class="e"></td>';
   for (d = 1; d <= dim; d++) {
-    key = ym + '-' + ('0' + d).slice(-2); cnt = {};
-    (by[key] || []).forEach(function (o) { cnt[o.type] = (cnt[o.type] || 0) + 1; });
+    key = ym + '-' + ('0' + d).slice(-2); cnt = (by[key] || []).length;
     h += '<td data-d="' + key + '" class="' + (key == cal.sel ? 'sel' : '') + '"><div class="d">' + d + '</div>' +
-      types.filter(function (t) { return cnt[t]; }).map(function (t) { return '<span class="b" title="' + t + '" style="background:' + otc(t) + '">' + cnt[t] + '</span>'; }).join('') + '</td>';
+      Dummy.day(by[key] || [], MC) + '</td>';
     if ((off + d) % 7 === 0 && d < dim) h += '</tr><tr>';
   }
   $('mc-grid').innerHTML = h + '</tr></table>';
   var rows = cal.sel ? (by[cal.sel] || []) : [];
   $('mc-dtitle').textContent = cal.sel ? 'Activities on ' + fd(cal.sel) : 'Select a date';
   $('mc-detail').innerHTML = !cal.sel ? '<div class="empty">Click a date to see its maintenance orders.</div>' : !rows.length ? '<div class="empty">No maintenance activity on this date.</div>' :
-    '<table class="dt"><tr><th>Order</th><th>Equipment No.</th><th>Type</th><th>Description</th><th>Planned Start</th><th>Plant</th></tr>' +
-    rows.map(function (r) { return '<tr><td>' + r.order + '</td><td>' + r.equipmentNo + '</td><td>' + pill(r.type) + '</td><td>' + (r.description ? esc(r.description) : '-') + '</td><td>' + fd(r.plannedStart) + '</td><td>' + r.plant + '</td></tr>'; }).join('') + '</table>';
-  var p = C.monthOrders(ym);
-  $('mc-kpis').innerHTML = card('Orders', nf(p.total), null, 'planned start in ' + ym) + types.map(function (t) { return card('Type ' + t, nf(p.byType[t]), null, 'planned start in ' + ym); }).join('') +
-    card('Equipment', nf(p.equipment), null, 'distinct equipment with an order') + card('Completion Rate', 'Unavailable', null, 'no status or confirmation field in the source sheet');
+    '<table class="dt"><tr>' + OC.map(function (c) { return '<th>' + c.l + '</th>'; }).join('') + '</tr>' +
+    rows.map(function (r) { return '<tr>' + OC.map(function (c) { return '<td>' + (c.f ? c.f(r) : r[c.k]) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+  var p = C.monthOrders(ym, fl), nd = 'no Status values in the source sheet', pa = p.attain;
+  $('mc-kpis').innerHTML = tile('blue', TI.cal, 'Planned Maintenance', nf(p.total), 'jobs') + tile('green', TI.ok, 'Completed (Actual)', p.hasStatus ? nf(p.done) : null, p.hasStatus ? 'jobs' : nd) +
+    tile('red', TI.warn, 'Overdue / Not Completed', p.hasStatus ? nf(p.overdue) : null, p.hasStatus ? 'jobs' : nd) +
+    tile('teal', TI.ring(pa), 'Plan Attainment', pa == null ? null : nf(pa * 100, 1) + '%', pa == null ? (p.hasStatus ? 'no orders in this month' : nd) : nf(p.done) + ' of ' + nf(p.total) + ' planned');
   $('mc-ttitle').textContent = 'Maintenance orders starting in ' + MN[m] + ' ' + y;
   tbl('mc-table', OC, p.orders, mcRender, 'No maintenance orders start in this month.');
   var ms = C.orderMonths();
-  chart('mc-c1', { type: 'bar', data: { labels: ms, datasets: types.map(function (t) { return { label: t, backgroundColor: otc(t), data: ms.map(function (x) { return C.monthOrders(x).byType[t]; }) }; }) },
-    options: { scales: { xAxes: [{ stacked: true }], yAxes: [{ stacked: true, ticks: { beginAtZero: true } }] } } });
+  chart('mc-c1', { type: 'bar', data: { labels: ms, datasets: [{ label: 'Orders', backgroundColor: MC, data: ms.map(function (x) { return C.monthOrders(x, fl).total; }) }] },
+    options: { legend: { display: false }, scales: { yAxes: [{ ticks: { beginAtZero: true } }] } } });
 }
 /* ---------- Inventory Monitoring ---------- */
+function kc(c, l, n, v) { return '<div class="kpi k-' + c + '"><div class="kl">' + l + '</div><div class="kv">' + nf(n) + '</div><div class="kn">' + Dummy.rp(v || 0) + '</div></div>'; }
 function ivRender() {
-  var pl = $('iv-plant').value, st = $('iv-status').value, ct = $('iv-cat').value, q = $('iv-search').value.toLowerCase(), n = {}, cn = {};
-  var rows = D.materials.map(C.inv).filter(function (r) { return (!pl || r.plant == pl) && (!st || r.status == st) && (!ct || r.category == ct) && (!q || (r.material + ' ' + r.description).toLowerCase().indexOf(q) >= 0); });
-  rows.forEach(function (r) { n[r.status] = (n[r.status] || 0) + 1; cn[r.category] = (cn[r.category] || 0) + 1; });
-  var sg = pl + '|' + st + '|' + ct + '|' + q; if (sg !== ivSig) { ivSig = sg; shown['iv-table'] = 0; }
+  var pl = $('iv-plant').value, st = $('iv-status').value, ct = '', gp = $('iv-grp').value, ln = $('iv-line').value, mcn = $('iv-mc').value, q = $('iv-search').value.toLowerCase(), n = {}, cn = {};
+  var rows = D.materials.map(C.inv).filter(function (r) { return (!pl || r.plant == pl) && (!st || r.status == st) && (!ct || r.category == ct) && (!gp || r.group == gp) && (!ln || r.line == ln) && (!mcn || r.machine == mcn) && (!q || (r.material + ' ' + r.description).toLowerCase().indexOf(q) >= 0); });
+  var v = { all: 0 }; rows.forEach(function (r) { n[r.status] = (n[r.status] || 0) + 1; cn[r.category] = (cn[r.category] || 0) + 1; v.all += r.value || 0; v[r.status] = (v[r.status] || 0) + (r.value || 0); v[r.category] = (v[r.category] || 0) + (r.value || 0); });
+  var sg = pl + '|' + st + '|' + ct + '|' + gp + '|' + ln + '|' + mcn + '|' + q; if (sg !== ivSig) { ivSig = sg; shown['iv-table'] = 0; }
   $('iv-count').textContent = nf(rows.length) + ' data found.';
-  $('iv-kpis').innerHTML = card('Total monitored materials', rows.length, null, (n.Unclassified || 0) + ' unclassified (no minimum)') + card('Out of stock', n['Out of Stock'] || 0) +
-    card('Below minimum', n['Below Minimum'] || 0) + card('Normal', n.Normal || 0) + card('Above maximum', n['Above Maximum'] || 0) +
-    card('Slow moving', cn['Slow Moving'] || 0, null, 'minimum and maximum not set') + card('Fast moving', cn['Fast Moving'] || 0, null, 'minimum and/or maximum set');
+  $('iv-kpis').innerHTML = kc('total', 'Total material master', rows.length, v.all) + kc('out', 'Out of stock', n['Out of Stock'] || 0, v['Out of Stock']) +
+    kc('below', 'Below minimum', n['Below Minimum'] || 0, v['Below Minimum']) + kc('normal', 'Normal', n.Normal || 0, v.Normal) + kc('above', 'Above maximum', n['Above Maximum'] || 0, v['Above Maximum']) +
+    kc('slow', 'Slow moving', cn['Slow Moving'] || 0, v['Slow Moving']) + kc('fast', 'Fast moving', cn['Fast Moving'] || 0, v['Fast Moving']);
   var q2 = function (v) { return nf(v); };
-  tbl('iv-table', [{ k: 'plant', l: 'Plant' }, { k: 'material', l: 'Material' }, { k: 'description', l: 'Description' },
+  tbl('iv-table', [{ k: 'plant', l: 'Plant', f: function (r) { return PN[r.plant] || r.plant; } }, { k: 'material', l: 'Material' }, { k: 'description', l: 'Description' },
     { k: 'min', l: 'Minimum Stock', n: 1, f: function (r) { return q2(r.min, r); } }, { k: 'max', l: 'Maximum Stock', n: 1, f: function (r) { return q2(r.max, r); } },
     { k: 'actual', l: 'Actual Stock', n: 1, f: function (r) { return q2(r.actual, r); } }, { k: 'gap', l: 'Gap', n: 1, f: function (r) { return r.gap == null ? 'Unavailable' : (r.gap > 0 ? '+' : '') + nf(r.gap); } },
     { k: 'status', l: 'Status', f: function (r) { return pill(r.status); } }, { k: 'category', l: 'Category', f: function (r) { return pill(r.category); } }], rows, ivRender, 'No materials match the selected filters.', 200);
 }
 /* ---------- Tabs and init ---------- */
-var R = { rc: rcRender, mc: mcRender, iv: ivRender };
+var R = { rc: rcRender, mc: mcRender, iv: ivRender, rp: function () { if (window.RequestPR) window.RequestPR.render(); }, sm: function () { if (window.Summary) window.Summary.render(); } };   /* rp = Request PR, js/request-pr.js */
 var cur = 'rc';
 /* Open menus, most recent first: opened[0] is the menu on screen, the rest are minimized tabs. A minimized pane is only hidden,
    so its filters, calendar month, sorting and scroll position are still there when its tab is opened again. */
@@ -136,7 +171,7 @@ function show(t) {
   cur = t;
   if (i >= 0) opened.splice(i, 1);
   opened.unshift(t);
-  ['rc', 'mc', 'iv'].forEach(function (x) { $('tab-' + x).hidden = x != t; });
+  ['rc', 'mc', 'iv', 'rp', 'sm'].forEach(function (x) { $('tab-' + x).hidden = x != t; });
   Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (b) { b.className = b.getAttribute('data-tab') == t ? 'on' : ''; });
   var m = menu(t);
   $('app-crumb').innerHTML = 'Transaction &#9656; ' + esc(m.no) + ' ' + esc(m.name);
@@ -153,14 +188,22 @@ function closeTab(t) {
 /* Filter options that depend on the data (plant list, order-type legend). Called at start and again whenever the sheet brings new data; the chosen plant is kept if it still exists. */
 function dataFilters() {
   var el = $('iv-plant'), pl = el.value;
-  opts(el, D.materials.map(function (m) { return m.plant; }).filter(function (p, i, a) { return a.indexOf(p) === i; }).sort().map(function (p) { return [p, p]; }), 'All plants');
+  opts(el, D.materials.map(function (m) { return m.plant; }).filter(function (p, i, a) { return a.indexOf(p) === i; }).sort().map(function (p) { return [p, PN[p] || p]; }), 'All plants');
   if (pl && Array.prototype.some.call(el.options, function (o) { return o.value === pl; })) el.value = pl;
-  $('mc-legend').innerHTML = C.orderTypes().map(pill).join('');
+  keepOpts($('mc-plant'), D.orders.map(function (o) { return o.plant; }).filter(function (p, i, a) { return a.indexOf(p) === i; }).sort().map(function (p) { return [p, PN[p] || p]; }), 'All plants');
+  yearOpts();
 }
+/* Refill a dropdown and keep the chosen value if it still exists. */
+function keepOpts(el, list, all) { var v = el.value; opts(el, list, all); if (v && Array.prototype.some.call(el.options, function (o) { return o.value === v; })) el.value = v; }
 /* ---------- Google Sheets (Maintenance Calendar + Inventory Monitoring) ---------- */
 var SD = window.SheetData, busy = false, good = '';
 function setSrc(txt, bad) { var e = $('app-src'); e.textContent = txt; e.title = txt; e.className = 'src' + (bad ? ' bad' : ''); }
 function hhmm(d) { return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+function mcOpts() { return Object.keys(Dummy.mc).sort().map(function (k) { return [k, k + ' ' + Dummy.mc[k][0]]; }); }
+function rcRefresh() {
+  var f = $('rc-from').value, t = $('rc-to').value, ml = D.rel.months.map(function (m) { return [m, m]; }), has = function (v) { return ml.some(function (x) { return x[0] == v; }); };
+  opts($('rc-from'), ml); opts($('rc-to'), ml); $('rc-from').value = has(f) ? f : ml[0][0]; $('rc-to').value = has(t) ? t : ml[ml.length - 1][0]; rcSec();
+}
 function loadSheets() {
   if (!SD || busy) return;
   busy = true;
@@ -178,6 +221,11 @@ function loadSheets() {
     setSrc('Calendar and Inventory: Google Sheets, ' + nf(r.orders.length) + ' orders and ' + nf(r.materials.length) + ' materials, read at ' + good +
       (ig ? ', ' + nf(ig) + ' invalid rows ignored (' + r.skipped.orders + ' orders, ' + r.skipped.materials + ' materials)' : '') +
       (r.byTitle.orders && r.byTitle.materials ? '' : ', columns read by position'), ig > 0);
+    if (SD.loadExtra) SD.loadExtra(function (err, chg) {
+      var el = $('app-src'), t = el.textContent + (err ? ' | Reliability and Summary tabs: copy from js/data.js and js/dummy.js (' + err.message + ')' : ' | Reliability and Summary tabs: Google Sheets');
+      el.textContent = t; el.title = t; if (err) el.className = 'src bad';
+      if (chg) { rcRefresh(); keepOpts($('iv-line'), Dummy.lines.map(function (x) { return [x, x]; }), 'All lines'); keepOpts($('iv-mc'), mcOpts(), 'All machines'); keepOpts($('mc-line'), Dummy.lines.map(function (x) { return [x, x]; }), 'All lines'); dataFilters(); if (window.Summary) window.Summary.reset(); R[cur](); }
+    });
   });
 }
 function init() {
@@ -188,12 +236,17 @@ function init() {
   ['rc-from', 'rc-to', 'rc-sec', 'rc-metric'].forEach(function (i) { $(i).onchange = rcRender; });
   $('rc-site').onchange = function () { rcSec(); rcRender(); };
   opts($('iv-status'), Object.keys(IS).map(function (s) { return [s, s]; }), 'All statuses');
-  opts($('iv-cat'), Object.keys(IC).map(function (s) { return [s, s]; }), 'All categories');
+  opts($('iv-grp'), [['Main Component', 'Main Component'], ['Aksesoris', 'Aksesoris']], 'All categories');
+  opts($('iv-line'), Dummy.lines.map(function (x) { return [x, x]; }), 'All lines'); opts($('iv-mc'), mcOpts(), 'All machines');
+  opts($('mc-month'), FM.map(function (mm) { return [mm, MN[+mm - 1]]; }));
+  opts($('mc-line'), Dummy.lines.map(function (x) { return [x, x]; }), 'All lines');
+  opts($('mc-status'), [['Complete', 'Complete'], ['Overdue / Not Complete', 'Overdue / Not Complete']], 'All statuses');
   dataFilters();
-  $('iv-plant').onchange = $('iv-status').onchange = $('iv-cat').onchange = $('iv-search').oninput = ivRender;
+  $('iv-plant').onchange = $('iv-status').onchange = $('iv-grp').onchange = $('iv-line').onchange = $('iv-mc').onchange = $('iv-search').oninput = ivRender;
+  $('mc-plant').onchange = $('mc-line').onchange = $('mc-status').onchange = $('mc-search').oninput = mcRender;
+  $('mc-month').onchange = $('mc-year').onchange = function () { cal.ym = (+$('mc-month').value >= 4 ? +$('mc-year').value - 1 : +$('mc-year').value) + '-' + $('mc-month').value; cal.sel = null; mcRender(); };
   $('mc-prev').onclick = function () { cal.ym = C.mAdd(cal.ym, -1); cal.sel = null; mcRender(); };
   $('mc-next').onclick = function () { cal.ym = C.mAdd(cal.ym, 1); cal.sel = null; mcRender(); };
-  $('mc-cur').onclick = function () { cal.ym = C.orderMonths()[0]; cal.sel = null; mcRender(); };
   $('mc-grid').onclick = function (e) { var el = e.target; while (el && el.getAttribute && !el.getAttribute('data-d')) el = el.parentNode; if (el && el.getAttribute) { cal.sel = el.getAttribute('data-d'); mcRender(); } };
   Array.prototype.forEach.call(document.querySelectorAll('nav button'), function (b) { b.onclick = function () { show(b.getAttribute('data-tab')); }; });
   $('app-tabs').onclick = function (e) {

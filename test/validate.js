@@ -34,6 +34,12 @@ t('month type counts add up to month total', C.orderMonths().every(function (m) 
 t('304 distinct equipment overall; plant 6410 has 699 orders and plant 6420 has 20', Object.keys(o.reduce(function (a, x) { a[x.equipmentNo] = 1; return a; }, {})).length === 304 && o.filter(function (x) { return x.plant === '6410'; }).length === 699 && o.filter(function (x) { return x.plant === '6420'; }).length === 20);
 t('every order has a description (null when empty: only order 5119351 has no description in the sheet)', o.every(function (x) { return x.description === null || (typeof x.description === 'string' && x.description.length > 0); }) && o.filter(function (x) { return x.description === null; }).length === 1 && o.filter(function (x) { return x.description === null; })[0].order === '5119351');
 t('a month without orders is empty, not an error', C.monthOrders('2027-01').total === 0 && C.monthOrders('2027-01').equipment === 0);
+t('Maintenance Calendar filters: a month filtered by plant or by category adds up to the unfiltered month', C.orderMonths().every(function (m) {
+  var all = C.monthOrders(m).total, p = C.monthOrders(m, o.filter(function (x) { return x.plant === '6410'; })).total + C.monthOrders(m, o.filter(function (x) { return x.plant === '6420'; })).total,
+    c = C.monthOrders(m, o.filter(function (x) { return x.type === 'ZPM1'; })).total + C.monthOrders(m, o.filter(function (x) { return x.type === 'ZPM2'; })).total;
+  return p === all && c === all;
+}));
+t('Maintenance Calendar filters: an empty filtered list gives 0 orders, and no list means all orders', C.monthOrders('2026-07', []).total === 0 && C.monthOrders('2026-07', null).total === 273);
 
 /* ---- Inventory: Data_dashboard.xlsx, sheet Min_Max_Stok ---- */
 var inv = D.materials.map(C.inv), n = {};
@@ -53,7 +59,7 @@ t('Slow Moving: min 0 and max 0, stock 5 (Category Slow Moving, Status Normal, G
 t('Slow Moving: min 0 and max 0, stock 0 is Out of Stock in Status and still Slow Moving in Category', st(0, 0, 0).status === 'Out of Stock' && st(0, 0, 0).category === 'Slow Moving');
 t('Slow Moving: empty (null) min and max count the same as 0', st(null, null, 3).category === 'Slow Moving' && st(0, null, 3).category === 'Slow Moving');
 t('Fast Moving: min and max set, whatever the status', st(4, 10, 0).category === 'Fast Moving' && st(4, 10, 2).category === 'Fast Moving' && st(4, 10, 6).category === 'Fast Moving' && st(4, 10, 11).category === 'Fast Moving');
-t('only one of min/max set: old rules apply (min 0 + max 10 = Unclassified; min 4 + max 0 = Normal or Below Minimum, never Above Maximum)', st(0, 10, 5).status === 'Unclassified' && st(4, 0, 7).status === 'Normal' && st(4, 0, 2).status === 'Below Minimum' && st(0, 10, 5).category === 'Fast Moving' && st(4, 0, 7).category === 'Fast Moving');
+t('only one of min/max set: no Unclassified status any more (min 0 + max 10 = Normal, or Above Maximum when stock is above it; min 4 + max 0 = Normal or Below Minimum, never Above Maximum)', st(0, 10, 5).status === 'Normal' && st(0, 10, 11).status === 'Above Maximum' && st(4, 0, 7).status === 'Normal' && st(4, 0, 2).status === 'Below Minimum' && st(0, 10, 5).category === 'Fast Moving' && st(4, 0, 7).category === 'Fast Moving');
 t('with min and max set, Out of Stock / Below / Above / Normal are unchanged', st(4, 10, 0).status === 'Out of Stock' && st(4, 10, 2).status === 'Below Minimum' && st(4, 10, 11).status === 'Above Maximum' && st(4, 10, 6).status === 'Normal');
 t('Slow Moving rows keep the 0 values as they came in (shown as 0, Gap Unavailable)', st(0, 0, 5).min === 0 && st(0, 0, 5).max === 0);
 
@@ -64,13 +70,21 @@ function csv(rows) { return rows.map(function (r) { return r.map(q).join(','); }
 function dmy(iso) { var p = iso.split('-'); return (+p[2]) + '/' + (+p[1]) + '/' + p[0]; }
 var matHead = [['Website', 'Plant', 'Material', 'Description', 'Minimum Stock', 'Maximum Stock', 'Actual Stock ', 'Gap'], ['SAP', 'Plant', 'Material', 'Descr.', 'Safety Stock', 'Maximum Stock Level', 'Actual Stock ', 'Actual Stock  - Minimum Stock'],
   ['Table Name', 'RMMG1', 'RMMG1', 'MAKT', 'MARC', 'MARC', 'MARD', 'MARD - MARC'], ['FieldName', 'WERKS', 'MATNR', 'MAKTX', 'EISBE', 'MABST', 'LABST', 'LABST - EISBE']];
-var ordHead = [['SAP', 'CAUFVD-AUFNR', 'CAUFVD-EQUNR', 'CAUFVD-AUART', 'CAUFVD-KTEXT', 'CAUFVD-GSTRP', 'CAUFVD-IWERK'], ['Dashboard', 'Order', 'Equipment_No', 'Type_Order', 'Description', 'Planned_Start', 'Plant']];
+var ordHead = [['SAP', 'CAUFVD-AUFNR', 'CAUFVD-EQUNR', 'CAUFVD-AUART', 'CAUFVD-KTEXT', 'CAUFVD-GSTRP', 'CAUFVD-IWERK', '', '', ''], ['Dashboard', 'Order', 'Equipment_No', 'Type_Order', 'Description', 'Planned_Start', 'Plant', 'Finish', 'Range', 'Status']];
 var matRows = D.materials.map(function (m) { return ['Value', m.plant, m.material, m.description, m.min, m.max, m.actual, m.actual - m.min]; });
-var ordRows = D.orders.map(function (o) { return ['Value', o.order, o.equipmentNo, o.type, o.description || '', dmy(o.plannedStart), o.plant]; });
+var ordRows = D.orders.map(function (o) { return ['Value', o.order, o.equipmentNo, o.type, o.description || '', dmy(o.plannedStart), o.plant, o.finish ? dmy(o.finish) : '', o.range || '', o.status || '']; });
 var matSheet = csv(matHead.concat(matRows)), ordSheet = csv(ordHead.concat(ordRows));
 var mr = P.toMaterials(P.parseCsv(matSheet)), or = P.toOrders(P.parseCsv(ordSheet));
 t('sheet reader: Min_Max_Stok in the Excel layout gives the same 16127 materials as data.js (4 title/label rows ignored, none counted as invalid)', mr.rows.length === 16127 && mr.skipped === 0 && mr.byTitle === true && JSON.stringify(mr.rows) === JSON.stringify(D.materials));
 t('sheet reader: Maintenance_Kalender in the Excel layout gives the same 719 orders as data.js (dates d/m/yyyy converted)', or.rows.length === 719 && or.skipped === 0 && or.byTitle === true && JSON.stringify(or.rows) === JSON.stringify(D.orders));
+t('Maintenance Calendar new columns (dummy): Finish is not before Planned Start, Range is A, B, C or D (all four used), Status is Complete or Overdue / Not Complete', D.orders.every(function (x) { return x.finish >= x.plannedStart && /^[A-D]$/.test(x.range) && (x.status === 'Complete' || x.status === 'Overdue / Not Complete'); }));
+t('only four inventory statuses exist: Out of Stock, Below Minimum, Normal, Above Maximum', D.materials.every(function (m) { return ['Out of Stock', 'Below Minimum', 'Normal', 'Above Maximum'].indexOf(C.inv(m).status) >= 0; }));
+t('Range dummy uses all four letters A, B, C, D', Object.keys(D.orders.reduce(function (a, x) { a[x.range] = 1; return a; }, {})).sort().join('') === 'ABCD');
+t('machine number = last 5 characters of Equipment_No: always 5 digits, 304 distinct, 113 orders end with 33002', D.orders.every(function (x) { return /^\d{5}$/.test(String(x.equipmentNo).slice(-5)); }) && Object.keys(D.orders.reduce(function (a, x) { a[String(x.equipmentNo).slice(-5)] = 1; return a; }, {})).length === 304 && D.orders.filter(function (x) { return String(x.equipmentNo).slice(-5) === '33002'; }).length === 113);
+var ms = C.monthOrders('2026-07'), nos = C.monthOrders('2026-07', D.orders.map(function (x) { return { order: x.order, equipmentNo: x.equipmentNo, type: x.type, plannedStart: x.plannedStart, status: null }; }));
+t('Calendar tiles: Completed + Overdue = Planned, Plan Attainment = Completed / Planned; without any Status value they are Unavailable (null)', ms.done + ms.overdue === ms.total && ms.total === 273 && ms.hasStatus === true && ms.attain === ms.done / ms.total && nos.hasStatus === false && nos.attain === null && C.monthOrders('2027-01').attain === null);
+var sv = P.toOrders(P.parseCsv(csv(ordHead.concat([['Value', '1', 'E1', 'ZPM1', 'a', '1/8/2026', '6410', '3/8/2026', 'A', ' completed '], ['Value', '2', 'E2', 'ZPM1', 'a', '1/8/2026', '6410', '', '', 'OVERDUE'], ['Value', '3', 'E3', 'ZPM1', 'a', '1/8/2026', '6410', 'x', 'B', 'Not Completed'], ['Value', '4', 'E4', 'ZPM1', 'a', '1/8/2026', '6410', '', '', 'overdue/not complete'], ['Value', '5', 'E5', 'ZPM1', 'a', '1/8/2026', '6410', '', '', 'unknown']]))));
+t('sheet reader: Finish, Range and Status are read; Status spellings are normalised; empty or unknown Status, empty Finish or Range and a bad Finish date become null without ignoring the row', sv.rows.length === 5 && sv.skipped === 0 && sv.rows[0].finish === '2026-08-03' && sv.rows[0].range === 'A' && sv.rows[0].status === 'Complete' && sv.rows[1].status === 'Overdue / Not Complete' && sv.rows[2].status === 'Overdue / Not Complete' && sv.rows[2].finish === null && sv.rows[3].status === 'Overdue / Not Complete' && sv.rows[4].status === null && sv.rows[1].finish === null && sv.rows[1].range === null);
 var gm = P.toMaterials(P.parseCsv(csv([['', '', '', '', '', '', '', ''], ['SAP', '', '', '', '', '', '', ''], ['Table Name', '', '', '', '', '', '', ''], ['FieldName', '', '', '', '', '', '', '']].concat(matRows))));
 t('sheet reader: when Google drops the title row, columns are read by position and the result is the same', gm.rows.length === 16127 && gm.byTitle === false && JSON.stringify(gm.rows) === JSON.stringify(D.materials));
 var em = P.toMaterials(P.parseCsv(csv(matHead.slice(0, 1).concat([
@@ -126,7 +140,7 @@ load().then(function (a) {
     } } };
   }
   var matT = D.materials.map(function (m) { return ['Value', m.plant, m.material, m.description, m.min, m.max, m.actual, m.actual - m.min]; });
-  var ordT = D.orders.map(function (o) { return ['Value', o.order, o.equipmentNo, o.type, o.description || '', dd(o.plannedStart), o.plant]; });
+  var ordT = D.orders.map(function (o) { return ['Value', o.order, o.equipmentNo, o.type, o.description || '', dd(o.plannedStart), o.plant, o.finish ? dd(o.finish) : '', o.range || '', o.status || '']; });
   var blank = function (a) { return [a, '', '', '', '', '', '', '']; };
   var ordA = gt(ordHead.concat(ordT));
   var variants = [['title row and label rows kept as text', gt(matHead.concat(matT)), true], ['Google used the title row as column titles', gt(matHead.slice(1).concat(matT), matHead[0]), true],
